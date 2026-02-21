@@ -1,214 +1,442 @@
 import { Outlet, NavLink, Link, useParams, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
-import { CreeperIcon } from '../ui';
 
-function SidebarLink({ to, icon, label, end = false }) {
+/* ══════════════════════════════════════════════════
+   STYLES
+══════════════════════════════════════════════════ */
+const LAYOUT_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap');
+
+  @keyframes xpBounce{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-5px) scale(1.2);}}
+  @keyframes mcBlink{0%,100%{opacity:1;}50%{opacity:0;}}
+  @keyframes mcFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+  @keyframes neonPulse{0%,100%{text-shadow:2px 2px 0 #040d07,0 0 10px rgba(74,222,128,0.3);}50%{text-shadow:2px 2px 0 #040d07,0 0 24px rgba(74,222,128,0.7);}}
+  @keyframes scanMove{from{transform:translateY(-100%);}to{transform:translateY(8000%);}}
+  @keyframes creeperPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(74,222,128,0.5));}50%{filter:drop-shadow(0 0 12px rgba(74,222,128,0.9));}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
+  @keyframes creditsPop{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
+  @keyframes creditsGlow{0%,100%{box-shadow:inset 0 0 0 transparent;}50%{box-shadow:inset 0 0 12px rgba(74,222,128,0.15);}}
+
+  /* Sidebar nav link */
+  .sidebar-link{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 16px;
+    font-family:'VT323',monospace;font-size:19px;
+    text-decoration:none;color:#1a4a2e;
+    border-left:3px solid transparent;
+    transition:all 0.12s;
+  }
+  .sidebar-link:hover{color:#4ade80;background:rgba(74,222,128,0.05);}
+  .sidebar-link-active{
+    color:#4ade80!important;
+    background:#0d2a14!important;
+    border-left:3px solid #4ade80!important;
+  }
+
+  /* Sidebar section header */
+  .sidebar-section{
+    padding:8px 16px 10px;
+    font-family:'Press Start 2P',monospace;font-size:6px;
+    color:#1a4a2e;letter-spacing:1.5px;
+  }
+
+  /* Main content grid bg */
+  .main-pg{
+    position:fixed;inset:0;
+    background-image:linear-gradient(rgba(74,222,128,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(74,222,128,0.015) 1px,transparent 1px);
+    background-size:36px 36px;pointer-events:none;z-index:0;
+  }
+  .main-scan{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0;}
+  .main-scan::after{content:'';position:absolute;left:0;right:0;height:2px;background:rgba(74,222,128,0.025);animation:scanMove 16s linear infinite;}
+
+  /* Scrollbar */
+  aside::-webkit-scrollbar{width:4px;}
+  aside::-webkit-scrollbar-track{background:#020c06;}
+  aside::-webkit-scrollbar-thumb{background:#1a4528;}
+  aside::-webkit-scrollbar-thumb:hover{background:#22c55e;}
+`;
+
+const SIDEBAR_W = 224;
+const HEADER_H  = 56;
+
+/* ══════════════════════════════════════════════════
+   CREEPER ICON (SVG pixel art)
+══════════════════════════════════════════════════ */
+function CreeperIcon({ size = 26 }) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      style={({ isActive }) => ({
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 16px',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 13,
-        color: isActive ? 'var(--green-bright)' : 'var(--text-secondary)',
-        background: isActive ? 'var(--green-deepest)' : 'transparent',
-        borderLeft: isActive ? '3px solid var(--green-bright)' : '3px solid transparent',
-        textDecoration: 'none',
-        transition: 'all 0.15s',
-        cursor: 'pointer',
-      })}
-      onMouseOver={e => { if (!e.currentTarget.classList.contains('active')) e.currentTarget.style.background = 'rgba(5,46,22,0.4)'; }}
-      onMouseOut={e => { if (!e.currentTarget.classList.contains('active')) e.currentTarget.style.background = 'transparent'; }}
-    >
-      <span style={{ width: 18, textAlign: 'center' }}>{icon}</span>
-      {label}
-    </NavLink>
+    <svg width={size} height={size} viewBox="0 0 16 16" style={{ imageRendering: 'pixelated', animation: 'creeperPulse 2.5s ease-in-out infinite', flexShrink: 0 }}>
+      <rect width="16" height="16" fill="#22c55e" />
+      {/* Eyes */}
+      <rect x="2" y="4" width="4" height="4" fill="#040d07" />
+      <rect x="10" y="4" width="4" height="4" fill="#040d07" />
+      {/* Mouth */}
+      <rect x="6"  y="8"  width="4" height="2" fill="#040d07" />
+      <rect x="4"  y="10" width="2" height="2" fill="#040d07" />
+      <rect x="10" y="10" width="2" height="2" fill="#040d07" />
+      <rect x="6"  y="12" width="4" height="2" fill="#040d07" />
+      {/* Edge highlight */}
+      <rect x="0" y="0" width="16" height="1" fill="rgba(255,255,255,0.15)" />
+      <rect x="0" y="0" width="1" height="16" fill="rgba(255,255,255,0.1)" />
+    </svg>
   );
 }
 
-function RepoSidebar({ repoId }) {
+/* ══════════════════════════════════════════════════
+   TORCH (flickering)
+══════════════════════════════════════════════════ */
+function Torch({ style = {} }) {
+  const [f, setF] = useState(0);
+  useEffect(() => { const id = setInterval(() => setF(x => (x + 1) % 3), 110); return () => clearInterval(id); }, []);
+  const fc = ['#ff8c00', '#ff5500', '#ffaa00'][f];
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{
-        padding: '6px 16px',
-        fontFamily: 'var(--font-pixel)', fontSize: 7,
-        color: 'var(--text-muted)', letterSpacing: 1,
-        borderBottom: '1px solid var(--border-green)',
-        marginBottom: 4, paddingBottom: 10,
-      }}>
-        ▸ REPOSITORY
-      </div>
-      <SidebarLink to={`/${repoId}`} end icon="📦" label="Overview" />
-      <SidebarLink to={`/${repoId}/structure`} icon="🗂" label="Structure" />
-      <SidebarLink to={`/${repoId}/graph`} icon="🕸" label="Call Graph" />
-      <SidebarLink to={`/${repoId}/analytics`} icon="📊" label="Analytics" />
-      <SidebarLink to={`/${repoId}/ask`} icon="💬" label="Ask AI" />
-      <SidebarLink to={`/${repoId}/history`} icon="🕐" label="History" />
+    <div style={{ position: 'relative', width: 10, height: 22, flexShrink: 0, ...style }}>
+      <div style={{ position: 'absolute', top: 0, left: 1, width: 8, height: 5, background: fc, boxShadow: `0 0 ${4 + f * 2}px ${fc}`, transition: 'all 0.09s' }} />
+      <div style={{ position: 'absolute', top: 4, left: 3, width: 4, height: 12, background: '#8B5E3C' }} />
     </div>
   );
 }
 
-export default function AppLayout() {
-  const { repoId } = useParams();
-  const navigate = useNavigate();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+/* ══════════════════════════════════════════════════
+   XP ORBS
+══════════════════════════════════════════════════ */
+function XPOrbs({ count = 6, style = {} }) {
+  return (
+    <div style={{ display: 'flex', gap: 3, ...style }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#a3e635', boxShadow: '0 0 4px #a3e635', animation: `xpBounce 1.4s ${i * 0.12}s ease-in-out infinite`, opacity: 1 - i * 0.1 }} />
+      ))}
+    </div>
+  );
+}
 
-  // Real user data from Clerk
-  const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || 'User';
+/* ══════════════════════════════════════════════════
+   SIDEBAR LINK
+══════════════════════════════════════════════════ */
+function SidebarLink({ to, icon, label, end = false }) {
+  return (
+    <NavLink to={to} end={end}
+      className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
+    >
+      <span style={{ width: 20, textAlign: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</span>
+      <span>{label}</span>
+    </NavLink>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   REPO SUB-NAV
+══════════════════════════════════════════════════ */
+function RepoSidebar({ repoId }) {
+  return (
+    <div style={{ marginTop: 6, borderTop: '2px solid #0d2a14', paddingTop: 6 }}>
+      <div className="sidebar-section" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color: '#22c55e' }}>▸</span> REPOSITORY
+      </div>
+      <div style={{ padding: '4px 12px 6px', marginBottom: 2 }}>
+        <div style={{ fontFamily: "'Press Start 2P',monospace", fontSize: 6, color: '#1a4a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: 1, padding: '4px 6px', background: '#020c06', border: '1px solid #1a4528' }}>
+          {repoId?.replace(/-/g, '/')}
+        </div>
+      </div>
+      <SidebarLink to={`/${repoId}`}            end icon="📦" label="Overview"   />
+      <SidebarLink to={`/${repoId}/structure`}      icon="🗂" label="Structure"  />
+      <SidebarLink to={`/${repoId}/graph`}          icon="🕸" label="Call Graph" />
+      <SidebarLink to={`/${repoId}/analytics`}      icon="📊" label="Analytics"  />
+      <SidebarLink to={`/${repoId}/ask`}            icon="💬" label="Ask AI"     />
+      <SidebarLink to={`/${repoId}/history`}        icon="🕐" label="History"    />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   GROUND STRIP (sidebar footer decoration)
+══════════════════════════════════════════════════ */
+function GroundStrip() {
+  return (
+    <div style={{ display: 'flex', overflow: 'hidden', height: 8 }}>
+      {Array.from({ length: 30 }).map((_, i) => (
+        <div key={i} style={{ flex: 1, background: i % 3 === 0 ? '#15803d' : i % 3 === 1 ? '#166534' : '#14532d', boxShadow: 'inset 0 -2px rgba(0,0,0,0.3)', borderRight: '1px solid rgba(0,0,0,0.1)' }} />
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   SCROLL PROGRESS BAR (header)
+══════════════════════════════════════════════════ */
+function ScrollProgress() {
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    const onScroll = () => {
+      const el  = document.getElementById('main-scroll');
+      if (!el) return;
+      const max = el.scrollHeight - el.clientHeight;
+      setPct(max > 0 ? (el.scrollTop / max) * 100 : 0);
+    };
+    const el = document.getElementById('main-scroll');
+    el?.addEventListener('scroll', onScroll);
+    return () => el?.removeEventListener('scroll', onScroll);
+  }, []);
+  return (
+    <div style={{ position: 'absolute', bottom: -2, left: 0, right: 0, height: 3, background: '#0d2a14' }}>
+      <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#15803d,#4ade80)', boxShadow: '0 0 6px #4ade8066', transition: 'width 0.1s linear' }} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   BREADCRUMB
+══════════════════════════════════════════════════ */
+function Breadcrumb({ repoId }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'VT323',monospace", fontSize: 18 }}>
+      <Link to="/dashboard" style={{ color: '#1a4a2e', textDecoration: 'none', transition: 'color 0.12s' }}
+        onMouseOver={e => e.currentTarget.style.color = '#4ade80'}
+        onMouseOut={e => e.currentTarget.style.color = '#1a4a2e'}
+      >
+        REPOLINK
+      </Link>
+      <span style={{ color: '#0d2a14', fontFamily: "'Press Start 2P',monospace", fontSize: 7 }}>/</span>
+      {repoId ? (
+        <>
+          <span style={{ color: '#2d6a3f' }}>{repoId.replace(/-/g, '/')}</span>
+        </>
+      ) : (
+        <span style={{ color: '#2d6a3f' }}>WORKSPACE</span>
+      )}
+      <span style={{ animation: 'mcBlink 1.2s step-end infinite', color: '#22c55e', fontFamily: "'Press Start 2P',monospace", fontSize: 8, marginLeft: 2 }}>█</span>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   CREDITS BADGE
+══════════════════════════════════════════════════ */
+function CreditsBadge() {
+  const [hov, setHov] = useState(false);
+  const credits = 420;
+  const pct = (credits / 500) * 100;
+  return (
+    <div
+      onMouseOver={() => setHov(true)} onMouseOut={() => setHov(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+        background: hov ? '#0d2a14' : '#020c06',
+        border: `2px solid ${hov ? '#22c55e' : '#1a4528'}`,
+        boxShadow: hov ? '0 0 12px rgba(74,222,128,0.2)' : 'none',
+        transition: 'all 0.15s', cursor: 'default', position: 'relative',
+      }}
+    >
+      <span style={{ fontSize: 14, animation: 'xpBounce 2s ease-in-out infinite' }}>⚡</span>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: "'Press Start 2P',monospace", fontSize: 9, color: '#4ade80', textShadow: '1px 1px 0 #040d07' }}>{credits}</span>
+          <span style={{ fontFamily: "'Press Start 2P',monospace", fontSize: 6, color: '#1a4a2e' }}>/ 500</span>
+        </div>
+        {/* Mini seg bar */}
+        <div style={{ display: 'flex', gap: 1.5, marginTop: 4 }}>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} style={{ width: 6, height: 4, background: i < Math.round((pct / 100) * 12) ? '#22c55e' : '#0d2a14', boxShadow: i < Math.round((pct / 100) * 12) ? '0 0 3px #22c55e88' : 'none' }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   USER CARD (sidebar bottom)
+══════════════════════════════════════════════════ */
+function UserCard({ user, onSignOut }) {
+  const displayName  = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || 'Player';
   const avatarLetter = displayName[0]?.toUpperCase() ?? '?';
-  const avatarUrl = user?.imageUrl;
+  const avatarUrl    = user?.imageUrl;
+
+  return (
+    <div style={{ borderTop: '3px solid #1a4528', background: '#020c06' }}>
+      <GroundStrip />
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Avatar */}
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={displayName}
+            style={{ width: 32, height: 32, flexShrink: 0, border: '2px solid #22c55e', objectFit: 'cover', imageRendering: 'auto', boxShadow: '0 0 8px rgba(74,222,128,0.3)' }}
+          />
+        ) : (
+          <div style={{ width: 32, height: 32, flexShrink: 0, background: '#0d2a14', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Press Start 2P',monospace", fontSize: 11, color: '#4ade80', boxShadow: '0 0 8px rgba(74,222,128,0.3)' }}>
+            {avatarLetter}
+          </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Press Start 2P',monospace", fontSize: 7, color: '#4ade80', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: 1, marginBottom: 3 }}>
+            {displayName.length > 14 ? displayName.slice(0, 13) + '…' : displayName}
+          </div>
+          <div style={{ fontFamily: "'VT323',monospace", fontSize: 14, color: '#1a4a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {user?.primaryEmailAddress?.emailAddress ?? ''}
+          </div>
+        </div>
+
+        {/* Sign out button */}
+        <button onClick={onSignOut} title="Sign out"
+          style={{ background: 'transparent', border: '2px solid #1a4528', color: '#1a4a2e', cursor: 'pointer', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, transition: 'all 0.12s' }}
+          onMouseOver={e => { e.currentTarget.style.borderColor = '#f87171'; e.currentTarget.style.color = '#f87171'; }}
+          onMouseOut={e => { e.currentTarget.style.borderColor = '#1a4528'; e.currentTarget.style.color = '#1a4a2e'; }}
+        >
+          ⏏
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   APP LAYOUT
+══════════════════════════════════════════════════ */
+export default function AppLayout() {
+  const { repoId }   = useParams();
+  const navigate     = useNavigate();
+  const { user }     = useUser();
+  const { signOut }  = useClerk();
+  const [collapsed, setCollapsed] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
   };
 
+  const sidebarWidth = collapsed ? 56 : SIDEBAR_W;
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <>
+      <style>{LAYOUT_CSS}</style>
+      <div className="main-pg" /><div className="main-scan" />
 
-      {/* ── Sidebar ── */}
-      <aside style={{
-        width: 'var(--sidebar-width)',
-        background: 'var(--sky-top)',
-        borderRight: '3px solid var(--border-green)',
-        display: 'flex', flexDirection: 'column',
-        position: 'fixed', top: 0, left: 0, bottom: 0,
-        zIndex: 50,
-        overflowY: 'auto',
-      }}>
-        {/* Logo */}
-        <div style={{
-          padding: '20px 16px 16px',
-          borderBottom: '3px solid var(--border-green)',
+      <div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+
+        {/* ══ SIDEBAR ══ */}
+        <aside style={{
+          width: sidebarWidth, background: '#040d07',
+          borderRight: '3px solid #1a4528',
+          display: 'flex', flexDirection: 'column',
+          position: 'fixed', top: 0, left: 0, bottom: 0,
+          zIndex: 50, overflowY: 'auto', overflowX: 'hidden',
+          transition: 'width 0.2s ease',
         }}>
-          <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-            <CreeperIcon size={24} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 9, color: 'var(--green-bright)', textShadow: '2px 2px 0 #052e16' }}>
-                RepoLink
-              </div>
-              <div style={{ fontFamily: 'var(--font-vt)', fontSize: 13, color: 'var(--text-muted)' }}>
-                AI Analyzer
-              </div>
-            </div>
-          </Link>
-        </div>
 
-        {/* Main nav */}
-        <nav style={{ flex: 1, paddingTop: 12 }}>
-          <div style={{ padding: '6px 16px 10px', fontFamily: 'var(--font-pixel)', fontSize: 7, color: 'var(--text-muted)', letterSpacing: 1 }}>
-            ▸ WORKSPACE
-          </div>
-          <SidebarLink to="/dashboard" end icon="🏠" label="Dashboard" />
-          <SidebarLink to="/analyze" icon="🔍" label="Analyze Repo" />
-
-          {/* Repo sub-nav (shown when inside a repo) */}
-          {repoId && <RepoSidebar repoId={repoId} />}
-
-          <div style={{ height: 16 }} />
-          <div style={{ padding: '6px 16px 10px', fontFamily: 'var(--font-pixel)', fontSize: 7, color: 'var(--text-muted)', letterSpacing: 1 }}>
-            ▸ ACCOUNT
-          </div>
-          <SidebarLink to="/profile" icon="👤" label="Profile" />
-          <SidebarLink to="/settings" icon="⚙" label="Settings" />
-        </nav>
-
-        {/* Bottom user card */}
-        <div style={{
-          padding: '14px 16px',
-          borderTop: '3px solid var(--border-green)',
-          background: 'var(--green-deepest)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Avatar: use Clerk profile image if available, else initial */}
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={displayName}
-                style={{
-                  width: 34, height: 34, flexShrink: 0,
-                  border: '2px solid var(--border-green)',
-                  objectFit: 'cover',
-                  imageRendering: 'pixelated',
-                }}
-              />
-            ) : (
-              <div style={{
-                width: 34, height: 34, flexShrink: 0,
-                background: 'var(--green-dark)',
-                border: '2px solid var(--border-green)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: 'var(--font-pixel)', fontSize: 10, color: 'var(--green-bright)',
-              }}>
-                {avatarLetter}
-              </div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {displayName}
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user?.primaryEmailAddress?.emailAddress ?? ''}
-              </div>
-            </div>
-            <button
-              onClick={handleSignOut}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}
-              title="Sign out"
+          {/* Logo */}
+          <div style={{ padding: '18px 14px 14px', borderBottom: '3px solid #1a4528', display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+            <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flex: 1, minWidth: 0 }}>
+              <CreeperIcon size={28} />
+              {!collapsed && (
+                <div>
+                  <div style={{ fontFamily: "'Press Start 2P',monospace", fontSize: 9, color: '#4ade80', textShadow: '2px 2px 0 #052e16', animation: 'neonPulse 3s ease-in-out infinite', letterSpacing: 1 }}>
+                    RepoLink
+                  </div>
+                  <div style={{ fontFamily: "'VT323',monospace", fontSize: 14, color: '#1a4a2e' }}>
+                    AI Analyzer
+                  </div>
+                </div>
+              )}
+            </Link>
+            {/* Collapse toggle */}
+            <button onClick={() => setCollapsed(c => !c)}
+              style={{ background: 'transparent', border: '2px solid #1a4528', color: '#1a4a2e', cursor: 'pointer', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, flexShrink: 0, fontFamily: "'Press Start 2P',monospace", transition: 'all 0.12s' }}
+              onMouseOver={e => { e.currentTarget.style.borderColor = '#4ade80'; e.currentTarget.style.color = '#4ade80'; }}
+              onMouseOut={e => { e.currentTarget.style.borderColor = '#1a4528'; e.currentTarget.style.color = '#1a4a2e'; }}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              ⏏
+              {collapsed ? '»' : '«'}
             </button>
           </div>
-        </div>
-      </aside>
 
-      {/* ── Main area ── */}
-      <div style={{ marginLeft: 'var(--sidebar-width)', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          {/* Nav */}
+          <nav style={{ flex: 1, paddingTop: 10 }}>
+            {!collapsed && <div className="sidebar-section"><span style={{ color: '#22c55e' }}>▸</span> WORKSPACE</div>}
+            <SidebarLink to="/dashboard" end icon="🏠" label={collapsed ? '' : 'Dashboard'} />
+            <SidebarLink to="/analyze"      icon="🔍" label={collapsed ? '' : 'Analyze Repo'} />
 
-        {/* Header */}
-        <header style={{
-          height: 'var(--header-height)',
-          background: 'var(--sky-top)',
-          borderBottom: '3px solid var(--border-green)',
-          padding: '0 32px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          position: 'sticky', top: 0, zIndex: 40,
-        }}>
-          {/* Breadcrumb placeholder - pages can override via context */}
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-muted)' }}>
-            RepoLink /&nbsp;
-            <span style={{ color: 'var(--text-secondary)' }}>
-              {repoId ? repoId : 'Workspace'}
-            </span>
-          </div>
+            {repoId && !collapsed && <RepoSidebar repoId={repoId} />}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {/* Credits badge */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '6px 12px',
-              background: 'var(--green-deepest)',
-              border: '2px solid var(--border-green)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-secondary)' }}>⚡ Credits:</span>
-              <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 9, color: 'var(--green-bright)' }}>420</span>
+            <div style={{ height: 12 }} />
+
+            {!collapsed && (
+              <>
+                <div style={{ height: 2, background: '#0d2a14', margin: '4px 16px' }} />
+                <div className="sidebar-section"><span style={{ color: '#22c55e' }}>▸</span> ACCOUNT</div>
+              </>
+            )}
+            <SidebarLink to="/profile"  icon="👤" label={collapsed ? '' : 'Profile'} />
+            <SidebarLink to="/settings" icon="⚙"  label={collapsed ? '' : 'Settings'} />
+          </nav>
+
+          {/* XP orbs above user card (only when expanded) */}
+          {!collapsed && (
+            <div style={{ padding: '8px 14px 0' }}>
+              <XPOrbs count={7} />
             </div>
+          )}
 
-            <Link to="/analyze" className="btn-primary" style={{ padding: '8px 16px', fontSize: 8 }}>
-              + New Repo
-            </Link>
-          </div>
-        </header>
+          {/* User card */}
+          {!collapsed ? (
+            <UserCard user={user} onSignOut={handleSignOut} />
+          ) : (
+            <div style={{ borderTop: '3px solid #1a4528', padding: '10px', display: 'flex', justifyContent: 'center' }}>
+              <button onClick={handleSignOut} title="Sign out"
+                style={{ background: 'transparent', border: '2px solid #1a4528', color: '#1a4a2e', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, transition: 'all 0.12s' }}
+                onMouseOver={e => { e.currentTarget.style.borderColor = '#f87171'; e.currentTarget.style.color = '#f87171'; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = '#1a4528'; e.currentTarget.style.color = '#1a4a2e'; }}
+              >
+                ⏏
+              </button>
+            </div>
+          )}
+        </aside>
 
-        {/* Page content */}
-        <main style={{ flex: 1, padding: '32px', background: 'var(--stone)', overflowX: 'hidden' }}>
-          <Outlet />
-        </main>
+        {/* ══ MAIN AREA ══ */}
+        <div style={{ marginLeft: sidebarWidth, flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', transition: 'margin-left 0.2s ease' }}>
+
+          {/* Header */}
+          <header style={{
+            height: HEADER_H, background: '#040d07',
+            borderBottom: '3px solid #1a4528',
+            padding: '0 28px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            position: 'sticky', top: 0, zIndex: 40, position: 'relative',
+          }}>
+            <ScrollProgress />
+
+            <Breadcrumb repoId={repoId} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CreditsBadge />
+
+              <Link to="/analyze" style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontFamily: "'Press Start 2P',monospace", fontSize: 7, letterSpacing: 1,
+                padding: '9px 16px', color: '#fff', textDecoration: 'none',
+                background: 'linear-gradient(180deg,#16a34a,#15803d)',
+                border: '3px solid #22c55e', boxShadow: '3px 3px 0 #052e16',
+                transition: 'all 0.1s', position: 'relative', overflow: 'hidden',
+              }}
+                onMouseOver={e => { e.currentTarget.style.transform = 'translate(-2px,-2px)'; e.currentTarget.style.boxShadow = '5px 5px 0 #052e16'; }}
+                onMouseOut={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '3px 3px 0 #052e16'; }}
+              >
+                <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(255,255,255,0.1) 0%,transparent 50%)', pointerEvents: 'none' }} />
+                + NEW REPO
+              </Link>
+            </div>
+          </header>
+
+          {/* Page content */}
+          <main id="main-scroll" style={{
+            flex: 1, background: '#040d07',
+            overflowX: 'hidden', overflowY: 'auto',
+            position: 'relative',
+          }}>
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
